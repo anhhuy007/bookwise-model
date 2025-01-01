@@ -53,6 +53,17 @@ class ResponseFormat(BaseModel):
     data: List[Any]  # Use Any if the data structure can vary
 
 
+class Book(BaseModel):
+    book_id: str
+    title: str
+    category: str
+
+
+class SearchRequest(BaseModel):
+    title: str
+    n: int = 5
+
+
 # --- API Endpoints ---
 @app.get("/popular_books", response_model=ResponseFormat)
 def get_popular_books(n: int = 10):
@@ -115,6 +126,78 @@ def recommend(req: RecommendRequest):
             status_code=404,
             detail=ResponseFormat(
                 status="error", message=str(e), data=[]
+            ).dict(),  # Convert to dictionary for HTTPException
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=ResponseFormat(
+                status="error", message=str(e), data=[]
+            ).dict(),  # Convert to dictionary for HTTPException
+        )
+
+
+@app.post("/search_books", response_model=ResponseFormat)
+def search_books(req: SearchRequest):
+    """
+    Endpoint to search for books by title.
+    """
+    try:
+        # Filter the DataFrame based on the search query
+        filtered_books = content_df[
+            content_df["title"].str.contains(req.title, case=False, na=False)
+        ]
+
+        # Sort by a relevant metric, e.g., average rating or number of ratings
+        # Here, we'll sort by 'avg_rating' in descending order as an example
+        sorted_books = filtered_books.sort_values(
+            by="avg_rating", ascending=False
+        ).head(req.n)
+
+        # Convert the result to a list of Book objects
+        books = [
+            Book(book_id=str(row["id"]), title=row["title"], category=row["category"])
+            for index, row in sorted_books.iterrows()
+        ]
+
+        return ResponseFormat(
+            status="success",
+            message="Books found successfully",
+            data=[book.dict() for book in books],
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=ResponseFormat(
+                status="error", message=str(e), data=[]
+            ).dict(),  # Convert to dictionary for HTTPException
+        )
+
+
+# search book by id
+@app.get("/book/{book_id}", response_model=ResponseFormat)
+def get_book(book_id: int):
+    """
+    Endpoint to get book details by book_id.
+    """
+    try:
+        book_details = content_df[content_df["id"] == book_id].iloc[0]
+        book = Book(
+            book_id=str(book_details["id"]),
+            title=book_details["title"],
+            category=book_details["category"],
+        )
+
+        return ResponseFormat(
+            status="success",
+            message="Book details retrieved successfully",
+            data=[book.dict()],
+        )
+    except IndexError:
+        raise HTTPException(
+            status_code=404,
+            detail=ResponseFormat(
+                status="error", message=f"Book with id {book_id} not found", data=[]
             ).dict(),  # Convert to dictionary for HTTPException
         )
     except Exception as e:

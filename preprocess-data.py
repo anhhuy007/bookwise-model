@@ -3,13 +3,13 @@ import pandas as pd
 
 # --- Configuration ---
 SENTENCE_TRANSFORMER_PATH = (
-    "./sentence_transformer.pkl"  # Path to your saved Sentence Transformer (optional)
+    "./preprocessed_data/sentence_transformer.pkl"  # Path to your saved Sentence Transformer (optional)
 )
-DATASET_PATH = "./content_based_data.csv"
-EMBEDDINGS_PATH = "embeddings.pkl"
-LABELS_PATH = "labels.pkl"
-WEIGHTS_PATH = "content_w.pkl"
-PREPROCESSED_INPUT_PATH = "preprocessed_input.pkl"
+DATASET_PATH = "./dataset/content_based_data.csv"
+EMBEDDINGS_PATH = "preprocessed_data/embeddings.pkl"
+LABELS_PATH = "preprocessed_data/labels.pkl"
+WEIGHTS_PATH = "preprocessed_data/content_w.pkl"
+PREPROCESSED_INPUT_PATH = "preprocessed_data/preprocessed_input.pkl"
 
 # --- Load Data and Preprocess ---
 try:
