@@ -426,9 +426,9 @@ class BookRecommender:
         )
         return content_attribute_matrixes
 
-    def preprocess_and_store_embeddings(self, dataset: pd.DataFrame):
+    def preprocess_and_store_book_embeddings(self, dataset: pd.DataFrame):
         """
-        Preprocesses the dataset, precomputes Sentence Transformer embeddings,
+        Preprocesses the book dataset, precomputes Sentence Transformer embeddings,
         and stores them along with other necessary data.
         """
         content_dataset = {}
@@ -493,51 +493,179 @@ class BookRecommender:
             self.content_full_preprocessed_input,
             self.content_dataset["id"],
             self.content_labels,
-            10,
+            10, # Number of books.
             content_initial_W,
             content_learning_rate,
             content_max_epoch,
         )
+    
+    def fill_head_zeros(self,binary_str: str, fixed_length: int) -> str:
+        """
+        Fill head zeros to get binary string with fixed length
+        """
+        if len(binary_str) >= fixed_length:
+            return binary_str
+        return '0' * (fixed_length - len(binary_str)) + binary_str
 
+    def fill_head_zeros_list(self,binary_str_list: list[str], fixed_length: int) -> list[str]:
+        """
+        Fill head zeros with fixed length to a list of binary string
+        """
+        return [self.fill_head_zeros(binary_str, fixed_length) for binary_str in binary_str_list]
+
+    def generate_user_attribute_matrixes(self, user_input: list[dict]) -> list[np.ndarray]:
+        """
+        Generate user attribute matrixes by processing user input in attributes:
+            gender, school, faculty, age, language, factor
+        """
+        user_attribute_matrixes = []
+        user_attribute_matrixes.append(self.calculate_std_distance_matrix(user_input, 'gender', 'one'))
+
+        user_attribute_matrixes.append(self.calculate_std_distance_matrix(user_input, 'school', 'cosine'))
+        user_attribute_matrixes.append(self.calculate_std_distance_matrix(user_input, 'faculty', 'one'))
+
+        user_attribute_matrixes.append(self.calculate_std_distance_matrix(user_input, 'age', 'number'))
+
+        user_attribute_matrixes.append(self.calculate_std_distance_matrix(user_input, 'language', 'digits'))
+        user_attribute_matrixes.append(self.calculate_std_distance_matrix(user_input, 'factor', 'digits'))
+        return user_attribute_matrixes
+
+    def preprocess_and_store_user_embeddings(self, dataset: pd.DataFrame):
+        """
+        Preprocesses the user dataset, precomputes Sentence Transformer embeddings,
+        and stores them along with other necessary data.
+        """
+        # Encode dataset
+        user_dataset = {}
+        user_dataset['id'] = list(dataset['id'].astype(str))
+        user_dataset['gender'] = list(dataset['gender'].astype(str))
+        user_dataset['school'] = list(self.encode_sentences(dataset['school'].astype(str)))
+
+        user_dataset['faculty'] = list(dataset['faculty'].astype(str))
+
+        user_dataset['age'] = list(dataset['age'].astype(int))
+
+        user_dataset['language'] = list(dataset['language'].astype(str))
+        user_dataset['factor'] = list(self.fill_head_zeros_list(dataset['factor'].astype(str), fixed_length=8))
+
+        user_dataset['goal'] = list(dataset['goal'].astype(str))
+
+        # Store the preprocessed dataset
+        self.user_dataset = user_dataset
+        
+        # Other preprocessing steps      
+        user_attribute_keys = ['gender', 'school', 'faculty', 'age', 'language', 'factor']
+        user_label_key = 'goal'
+        self.user_converted_dataset = self.convert_dataset(user_dataset, user_attribute_keys, user_label_key)
+        self.user_labels = self.create_label_dict(self.user_converted_dataset)
+        # Precompute attribute matrices
+        self.user_full_attribute_matrixes = self.generate_user_attribute_matrixes(self.user_converted_dataset)
+        # Precompute value matrix for faster apply_model
+        USER_LAMBDAS = np.array([1, 1, 1, 1, 1, 2])
+        self.user_full_preprocessed_input = self.preprocess_input(
+            self.user_full_attribute_matrixes, USER_LAMBDAS
+        )
+
+        # Train the model and store user_W for faster prediction
+        user_initial_W = None
+        user_learning_rate = 0.03
+        user_max_epoch = 100
+        self.user_W = self.train_model(
+            self.user_full_preprocessed_input,
+            self.user_dataset["id"],
+            self.user_labels,
+            10, # Number of books.
+            user_initial_W,
+            user_learning_rate,
+            user_max_epoch,
+        )        
+
+    def preprocess_and_store_favorite_books(self, favorite_dataset: pd.DataFrame):
+        self.favorite_books=favorite_dataset
     def save_precomputed_data(
         self,
-        embeddings_path="embeddings.pkl",
-        labels_path="labels.pkl",
-        weights_path="content_w.pkl",
-        preprocessed_input_path="preprocessed_input.pkl",
+        content_embeddings_path="content_embeddings.pkl",
+        content_labels_path="content_labels.pkl",
+        content_weights_path="content_w.pkl",
+        content_preprocessed_input_path="content_preprocessed_input.pkl",
+        
+        user_embeddings_path="user_embeddings.pkl",
+        user_labels_path="user_labels.pkl",
+        user_weights_path="user_w.pkl",
+        user_preprocessed_input_path="user_preprocessed_input.pkl",
+        
+        favorite_preprocessed_input_path="favorite_preprocessed_input.pkl",
     ):
         """Saves the precomputed data to pickle files."""
-        with open(embeddings_path, "wb") as f:
+        # Save book precomputed data
+        with open(content_embeddings_path, "wb") as f:
             pickle.dump(self.content_dataset, f)
-        with open(labels_path, "wb") as f:
+        with open(content_labels_path, "wb") as f:
             pickle.dump(self.content_labels, f)
-        with open(weights_path, "wb") as f:
+        with open(content_weights_path, "wb") as f:
             pickle.dump(self.content_W, f)
-        with open(preprocessed_input_path, "wb") as f:
+        with open(content_preprocessed_input_path, "wb") as f:
             pickle.dump(self.content_full_preprocessed_input, f)
-
+            
+        # Save user precomputed data
+        with open(user_embeddings_path, "wb") as f:
+            pickle.dump(self.user_dataset, f)
+        with open(user_labels_path, "wb") as f:
+            pickle.dump(self.user_labels, f)
+        with open(user_weights_path, "wb") as f:
+            pickle.dump(self.user_W, f)
+        with open(user_preprocessed_input_path, "wb") as f:
+            pickle.dump(self.user_full_preprocessed_input, f)
+            
+        # Save user favorited data
+        with open(favorite_preprocessed_input_path, "wb") as f:
+            pickle.dump(self.favorite_books, f)
     def load_precomputed_data(
         self,
-        embeddings_path="embeddings.pkl",
-        labels_path="labels.pkl",
-        weights_path="content_w.pkl",
-        preprocessed_input_path="preprocessed_input.pkl",
+        content_embeddings_path="content_embeddings.pkl",
+        content_labels_path="content_labels.pkl",
+        content_weights_path="content_w.pkl",
+        content_preprocessed_input_path="content_preprocessed_input.pkl",
+        
+        user_embeddings_path="user_embeddings.pkl",
+        user_labels_path="user_labels.pkl",
+        user_weights_path="user_w.pkl",
+        user_preprocessed_input_path="user_preprocessed_input.pkl",
+        
+        favorite_preprocessed_input_path="favorite_preprocessed_input.pkl",
     ):
         """Loads precomputed data from pickle files."""
         try:
-            with open(embeddings_path, "rb") as f:
+            # Load book precomputed data
+            with open(content_embeddings_path, "rb") as f:
                 self.content_dataset = pickle.load(f)
-            with open(labels_path, "rb") as f:
+            with open(content_labels_path, "rb") as f:
                 self.content_labels = pickle.load(f)
-            with open(weights_path, "rb") as f:
+            with open(content_weights_path, "rb") as f:
                 self.content_W = pickle.load(f)
-            with open(preprocessed_input_path, "rb") as f:
+            with open(content_preprocessed_input_path, "rb") as f:
                 self.content_full_preprocessed_input = pickle.load(f)
+                
+            # Load user precomputed data
+            with open(user_embeddings_path, "rb") as f:
+                self.user_dataset = pickle.load(f)
+            with open(user_labels_path, "rb") as f:
+                self.user_labels = pickle.load(f)
+            with open(user_weights_path, "rb") as f:
+                self.user_W = pickle.load(f)
+            with open(user_preprocessed_input_path, "rb") as f:
+                self.user_full_preprocessed_input = pickle.load(f)
+
+            # Load user favorited data
+            with open(favorite_preprocessed_input_path, "rb") as f:
+                self.favorite_books = pickle.load(f)
+
         except FileNotFoundError:
             raise FileNotFoundError(
                 "Precomputed data files not found. Run 'preprocess_and_store_embeddings' and 'save_precomputed_data' first."
             )
-
+        except Exception as e:
+            print(f"Error loading precomputed data: {e}")
     def find_similar_books(self, book_id: int, n: int = 10):
         """
         Finds books similar to the given book_id using precomputed data.
@@ -569,7 +697,91 @@ class BookRecommender:
         )
 
         return content_predict_ids
+    
+    def get_collaborative_recommendations(self, user_id: str, n: int = 10):
+        """
+        Recommends books based on ratings from users with similar taste profiles.
+        Uses collaborative filtering to find patterns in user-item interactions.
 
+        Args:
+            user_id: Target user identifier
+            n: Number of recommendations
+        Returns:
+            List of recommended book IDs
+        """
+        # Use precomputed embeddings, labels, and weights
+        if (
+            not hasattr(self, "user_dataset")
+            or not hasattr(self, "user_labels")
+            or not hasattr(self, "user_W")
+            or not hasattr(self, "favorite_books")
+        ):
+            raise Exception(
+                "Precomputed data not loaded. Call 'load_precomputed_data' first."
+            )
+
+        try:
+            target_index = self.user_dataset["id"].index(str(user_id))
+        except ValueError:
+            raise ValueError(f"User ID {user_id} not found in the dataset.")
+
+        # Use pre-trained W and preprocessed input for faster prediction
+        user_predict_ids, user_best_values = self.apply_model(
+            target_index,
+            self.user_full_preprocessed_input,
+            self.user_W,
+            self.user_dataset["id"],
+            self.user_labels,
+            n,
+        )
+        print('User predict ids',user_predict_ids)
+        # From user_predict_ids, find all books that user_predict_ids liked
+        recommended_books = self.favorite_books[self.favorite_books['user_id'].isin(user_predict_ids)]['favorite_book'].tolist()
+    
+        # Convert all book IDs to strings
+        recommended_books = [str(book_id) for book_id in recommended_books]
+
+
+        # Remove duplicates by converting the list to a set and then back to a list
+        unique_recommended_books = list(set(recommended_books))
+        return unique_recommended_books
+
+
+
+    def get_personalized_recommendations(self, user_id: str, n: int = 10):
+        """
+        Generates personalized book recommendations based on user's reading preferences.
+        Uses content-based filtering comparing book features with user's highly rated books.
+
+        Args:
+            user_id: Target user identifier
+            n: Number of recommendations
+        Returns:
+            List of recommended book IDs
+        """
+        # Use precomputed embeddings, labels, and weights
+        if (
+            not hasattr(self, "content_dataset")
+            or not hasattr(self, "content_labels")
+            or not hasattr(self, "content_W")
+            or not hasattr(self, "favorite_books")
+            
+        ):
+            raise Exception(
+                "Precomputed data not loaded. Call 'load_precomputed_data' first."
+            )
+
+        # Find liked books of user_id
+        favor_books = self.favorite_books[self.favorite_books['user_id'] == user_id]
+        favor_books_id = favor_books['favorite_book']
+        print(favor_books_id)
+        # Take all related books from user preference
+        result = []
+        for book in favor_books_id:
+            content_predict_ids = self.find_similar_books(book, n)
+            result.extend(content_predict_ids)
+        result = list(set(result))
+        return result
 
 def main():
     # export sentence transformer model
