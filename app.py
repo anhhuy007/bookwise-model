@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import pandas as pd
 import numpy as np
-from typing import List, Any
+from typing import List, Any, Optional
 from book_recommender import BookRecommender, WeightedRatingModel, GradientDescentExpModel, FavouriteDataset
 from fetch_data import get_books_data, get_user_info_data, get_favourite_books_data
 from semantic_search import BookSemanticSearch  # Import the model class
@@ -143,6 +143,21 @@ class Recommendation(BaseModel):
     authors: str
     category: str
     best_value: float
+
+class BookSearchResponse(BaseModel):
+    id: int
+    title: str
+    authors: str
+    category: str
+    rating: float
+    similarity_score: str
+    preview_url: Optional[str] = None
+    img_url: str
+
+
+class SearchQuery(BaseModel):
+    query: str = Field(..., description="The search query")
+    top_k: int = Field(5, description="Number of top similar books to return")
 
 def format_recommedation(books: list[int], best_values: np.ndarray=None) -> list[Recommendation]:
     n_books = len(books)
