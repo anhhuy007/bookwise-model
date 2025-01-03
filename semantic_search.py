@@ -6,8 +6,8 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import logging
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Any
-from fetch_data import get_books_data
+from typing import List, Tuple, Optional
+from fetch_data import get_books_data  # Assuming fetch_data.py is in the same dir
 
 
 @dataclass
@@ -31,9 +31,6 @@ class Book:
     @classmethod
     def from_db_tuple(cls, record: Tuple) -> "Book":
         """Creates a Book instance from a database tuple"""
-        # Map tuple indices to Book fields based on the table structure:
-        # id, isbn13, title, authors, published_date, page_count, category,
-        # language, avg_rating, rating_count, img_url, preview_url, description
         return cls(
             id=record[0],
             isbn13=record[1],
@@ -181,8 +178,6 @@ class BookSemanticSearch:
         self.initialize_faiss_index(embeddings)
         self.save_faiss_index()
 
-    # Previous code remains the same up until the search_books method...
-
     def search_books(
         self, query: str, k: int = 5, similarity_threshold: float = 0.1
     ) -> List[Tuple[Book, float]]:
@@ -207,7 +202,6 @@ class BookSemanticSearch:
             similarity_score = float(distance)
             if similarity_score >= similarity_threshold:
                 results.append((self.books[book_idx], similarity_score))
-                
         return sorted(results, key=lambda x: x[1], reverse=True)
 
     def find_similar_books(self, query: str, k: int = 5) -> List[dict]:
@@ -249,36 +243,3 @@ class BookSemanticSearch:
         except Exception as e:
             self.logger.error(f"Error during book search: {e}")
             raise
-
-
-def main():
-    # Initialize search engine
-    book_search = BookSemanticSearch()
-
-    # Example search
-    query = "Suggest books that explore the psychological mechanisms of decision-making in high-stakes environments, incorporating real-life examples and behavioral experiments"
-    try:
-        # Explicitly initialize the embedding model
-        book_search.initialize_embedding_model()
-
-        results = book_search.find_similar_books(query)
-        print(f"\nFound {len(results)} similar books for query: {query}")
-
-        # Print results
-        for idx, result in enumerate(results, 1):
-            print(f"\n{idx}. {result['title']} by {result['authors']}")
-            print(f"ID: {result['id']}")
-            print(f"Category: {result['category']}")
-            print(f"Rating: {result['rating']}")
-            print(f"Similarity Score: {result['similarity_score']}")
-    except Exception as e:
-        print(f"Error during search: {e}")
-        raise
-
-
-# Example usage with better error handling
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"An error occurred: {e}")

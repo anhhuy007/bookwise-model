@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, Field
 import pandas as pd
-from typing import List, Any
+from typing import List, Any, Optional
 from book_recommender import BookRecommender
 from fetch_data import get_books_data, get_user_info_data, get_favourite_books_data
+from semantic_search import BookSemanticSearch  # Import the model class
 
 # --- Configuration and Model Loading ---
 app = FastAPI()
@@ -23,11 +24,6 @@ FAVORITE_BOOKS_PREPROCESSED_INPUT_PATH = (
     "./preprocessed_data/favorite_preprocessed_input.pkl"
 )
 SENTENCE_TRANSFORMER_PATH = "./preprocessed_data/sentence_transformer.pkl"
-
-# Dataset files
-CONTENT_DATASET_PATH = "./dataset/content_based_data.csv"
-USER_DATASET_PATH = "./dataset/user_based_data.csv"
-FAVORITE_BOOKS_PATH = "./dataset/favo_books.csv"
 
 try:
     recommender = BookRecommender(sentence_transformer_path=SENTENCE_TRANSFORMER_PATH)
@@ -53,8 +49,10 @@ try:
     books_data = get_books_data()
     user_info_data = get_user_info_data()
     favourite_books_data = get_favourite_books_data()
-    
-    print(f"Fetch {len(books_data)} books, {len(user_info_data)} users, and {len(favourite_books_data)} favourite books")
+
+    print(
+        f"Fetch {len(books_data)} books, {len(user_info_data)} users, and {len(favourite_books_data)} favourite books"
+    )
 
     # Convert to DataFrames
     content_df = pd.DataFrame(
@@ -130,6 +128,22 @@ class ResponseFormat(BaseModel):
     books: List[Any]
 
 
+class BookSearchResponse(BaseModel):
+    id: int
+    title: str
+    authors: str
+    category: str
+    rating: float
+    similarity_score: str
+    preview_url: Optional[str] = None
+    img_url: str
+
+
+class SearchQuery(BaseModel):
+    query: str = Field(..., description="The search query")
+    top_k: int = Field(5, description="Number of top similar books to return")
+
+
 # --- API Endpoints ---
 @app.get("/popular_books", response_model=ResponseFormat)
 def get_popular_books(n: int = 10):
@@ -179,7 +193,7 @@ def content_based_recommendations(req: RecommendRequest):
             if book_matches.empty:
                 print(f"Warning: Book ID {book_id} not found in database")
                 continue
-                
+
             try:
                 book_details = book_matches.iloc[0]
                 recommendations.append(
@@ -188,7 +202,7 @@ def content_based_recommendations(req: RecommendRequest):
                         title=book_details["title"],
                         authors=book_details["authors"],
                         category=book_details["category"],
-                        best_value=0.9
+                        best_value=0.9,
                     )
                 )
             except IndexError as e:
@@ -271,3 +285,43 @@ def personalized_recommendations(req: User_RecommendRequest):
                 status="error", message=str(e), books=[]
             ).dict(),  # Convert to dictionary for HTTPException
         )
+
+book_search_engine = BookSemanticSearch()
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize book search engine, and load embedding and FAISS model."""
+    print("Starting app...")
+    try:
+        if not book_search_engine.load_faiss_index():
+            print("Building the index...This will take a while.")
+            book_search_engine.build_index()
+        elif not book_search_engine.books:
+            book_search_engine.fetch_books()
+        book_search_engine.initialize_embedding_model()  # Ensure embedding model initialized
+    except Exception as e:
+        print(f"Error initializing the app: {e}")
+        raise
+
+
+# API dependency
+def get_book_search_engine() -> BookSemanticSearch:
+    return book_search_engine
+
+
+# API endpoint
+@app.post("/search", response_model=List[BookSearchResponse])
+async def search_books_endpoint(
+    search_query: SearchQuery,
+    book_search: BookSemanticSearch = Depends(get_book_search_engine),
+):
+    try:
+        results = book_search.find_similar_books(
+            search_query.query, k=search_query.top_k
+        )
+        return results
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
