@@ -1,13 +1,30 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
 import numpy as np
 from typing import List, Any
-from book_recommender_v2 import BookRecommender, WeightedRatingModel, GradientDescentExpModel, FavouriteDataset
+from book_recommender import BookRecommender, WeightedRatingModel, GradientDescentExpModel, FavouriteDataset
 from fetch_data import get_books_data, get_user_info_data, get_favourite_books_data
+from semantic_search import BookSemanticSearch  # Import the model class
 
 # --- Configuration and Model Loading ---
 app = FastAPI()
+
+# --- CORS Middleware ---
+origins = [
+    "http://localhost:3000",  # Add your frontend's origin(s)
+    # Add other origins if needed
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # You can restrict methods if needed e.g., ["GET", "POST"]
+    allow_headers=["*"],  # You can restrict headers if needed
+)
+# --- End of CORS Setup ----
 
 # Precomputed data files
 RATING_N_PATH = "preprocessed_data/rating_N.pkl"
@@ -55,8 +72,10 @@ try:
     books_data = get_books_data()
     user_info_data = get_user_info_data()
     favourite_books_data = get_favourite_books_data()
-    
-    print(f"Fetch {len(books_data)} books, {len(user_info_data)} users, and {len(favourite_books_data)} favourite books")
+
+    print(
+        f"Fetch {len(books_data)} books, {len(user_info_data)} users, and {len(favourite_books_data)} favourite books"
+    )
 
     # Convert to DataFrames
     content_df = pd.DataFrame(
@@ -305,3 +324,48 @@ def personalized_recommendations(req: User_RecommendRequest):
                 status="error", message=str(e), books=[]
             ).dict(),  # Convert to dictionary for HTTPException
         )
+
+book_search_engine = BookSemanticSearch()
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize book search engine, and load embedding and FAISS model."""
+    print("Starting app...")
+    try:
+        if not book_search_engine.load_faiss_index():
+            print("Building the index...This will take a while.")
+            book_search_engine.build_index()
+        elif not book_search_engine.books:
+            book_search_engine.fetch_books()
+        book_search_engine.initialize_embedding_model()  # Ensure embedding model initialized
+    except Exception as e:
+        print(f"Error initializing the app: {e}")
+        raise
+
+
+# API dependency
+def get_book_search_engine() -> BookSemanticSearch:
+    return book_search_engine
+
+
+# API endpoint
+@app.post("/search", response_model=List[BookSearchResponse])
+async def search_books_endpoint(
+    search_query: SearchQuery,
+    book_search: BookSemanticSearch = Depends(get_book_search_engine),
+):
+    try:
+        results = book_search.find_similar_books(
+            search_query.query, k=search_query.top_k
+        )
+        
+        print(f"Search query: {search_query.query}")
+        for idx, result in enumerate(results):
+            print(f"Result {idx+1}: {result['title']} by {result['authors']} - {result['similarity_score']}")
+        
+        return results
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

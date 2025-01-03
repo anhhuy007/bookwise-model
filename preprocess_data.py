@@ -1,4 +1,4 @@
-from book_recommender_v2 import RatingDataset, ContentDataset, UserDataset, FavouriteDataset, WeightedRatingModel, GradientDescentExpModel, Utils
+from book_recommender import RatingDataset, ContentDataset, UserDataset, FavouriteDataset, WeightedRatingModel, GradientDescentExpModel, Utils
 import pandas as pd
 import numpy as np
 
