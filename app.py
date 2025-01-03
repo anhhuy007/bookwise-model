@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import pandas as pd
 from typing import List, Any, Optional
@@ -8,6 +9,21 @@ from semantic_search import BookSemanticSearch  # Import the model class
 
 # --- Configuration and Model Loading ---
 app = FastAPI()
+
+# --- CORS Middleware ---
+origins = [
+    "http://localhost:3000",  # Add your frontend's origin(s)
+    # Add other origins if needed
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # You can restrict methods if needed e.g., ["GET", "POST"]
+    allow_headers=["*"],  # You can restrict headers if needed
+)
+# --- End of CORS Setup ----
 
 # Precomputed data files
 CONTENT_EMBEDDINGS_PATH = "./preprocessed_data/content_embeddings.pkl"
@@ -319,6 +335,11 @@ async def search_books_endpoint(
         results = book_search.find_similar_books(
             search_query.query, k=search_query.top_k
         )
+        
+        print(f"Search query: {search_query.query}")
+        for idx, result in enumerate(results):
+            print(f"Result {idx+1}: {result['title']} by {result['authors']} - {result['similarity_score']}")
+        
         return results
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))

@@ -233,7 +233,7 @@ class BookSemanticSearch:
                         "category": book.category,
                         "rating": book.avg_rating,
                         "similarity_score": f"{score:.2f}",
-                        "preview_url": book.preview_url,
+                        "view_count": book.rating_count,
                         "img_url": book.img_url,
                     }
                 )
