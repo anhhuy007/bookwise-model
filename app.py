@@ -8,19 +8,23 @@ from fetch_data import get_books_data, get_user_info_data, get_favourite_books_d
 # --- Configuration and Model Loading ---
 app = FastAPI()
 
-# Paths to your precomputed data files
+# Precomputed data files
 CONTENT_EMBEDDINGS_PATH = "./preprocessed_data/content_embeddings.pkl"
 CONTENT_LABELS_PATH = "./preprocessed_data/content_labels.pkl"
 COTENT_WEIGHTS_PATH = "./preprocessed_data/content_w.pkl"  #
-CONTENT_PREPROCESSED_INPUT_PATH = "./preprocessed_data/content_preprocessed_input.pkl"  #
+CONTENT_PREPROCESSED_INPUT_PATH = (
+    "./preprocessed_data/content_preprocessed_input.pkl"  #
+)
 USER_EMBEDDINGS_PATH = "./preprocessed_data/user_embeddings.pkl"
 USER_LABELS_PATH = "./preprocessed_data/user_labels.pkl"
 USER_WEIGHTS_PATH = "./preprocessed_data/user_w.pkl"
 USER_PREPROCESSED_INPUT_PATH = "./preprocessed_data/user_preprocessed_input.pkl"
-FAVORITE_BOOKS_PREPROCESSED_INPUT_PATH = "./preprocessed_data/favorite_preprocessed_input.pkl"
+FAVORITE_BOOKS_PREPROCESSED_INPUT_PATH = (
+    "./preprocessed_data/favorite_preprocessed_input.pkl"
+)
 SENTENCE_TRANSFORMER_PATH = "./preprocessed_data/sentence_transformer.pkl"
 
-# Paths to your dataset files
+# Dataset files
 CONTENT_DATASET_PATH = "./dataset/content_based_data.csv"
 USER_DATASET_PATH = "./dataset/user_based_data.csv"
 FAVORITE_BOOKS_PATH = "./dataset/favo_books.csv"
@@ -43,30 +47,62 @@ except Exception as e:
     print(f"Error loading precomputed data or Sentence Transformer: {e}")
     raise Exception("Error loading precomputed data or Sentence Transformer")
 
+# Load data from database
 try:
-    content_df = pd.read_csv(CONTENT_DATASET_PATH)
-except FileNotFoundError:
-    raise FileNotFoundError(f"Could not find the dataset file: {CONTENT_DATASET_PATH}")
-except Exception as e:
-    raise Exception(f"An error occurred while loading the dataset: {e}")
+    # Fetch data from database
+    books_data = get_books_data()
+    user_info_data = get_user_info_data()
+    favourite_books_data = get_favourite_books_data()
+    
+    print(f"Fetch {len(books_data)} books, {len(user_info_data)} users, and {len(favourite_books_data)} favourite books")
 
-try:
-    user_df = pd.read_csv(USER_DATASET_PATH)
-except FileNotFoundError:
-    raise FileNotFoundError(
-        f"Could not find the user dataset file: {USER_DATASET_PATH}"
+    # Convert to DataFrames
+    content_df = pd.DataFrame(
+        books_data,
+        columns=[
+            "id",
+            "isbn13",
+            "title",
+            "authors",
+            "published_date",
+            "page_count",
+            "category",
+            "language",
+            "avg_rating",
+            "rating_count",
+            "img_url",
+            "preview_url",
+            "description",
+        ],
     )
-except Exception as e:
-    raise Exception(f"An error occurred while loading the user dataset: {e}")
 
-try:
-    favorite_books_df = pd.read_csv(FAVORITE_BOOKS_PATH)
-except FileNotFoundError:
-    raise FileNotFoundError(
-        f"Could not find the favorite books file: {FAVORITE_BOOKS_PATH}"
+    user_df = pd.DataFrame(
+        user_info_data,
+        columns=[
+            "id",
+            "gender",
+            "dob",
+            "university",
+            "faculty",
+            "age",
+            "language",
+            "factor",
+            "goal",
+        ],
     )
+
+    favorite_books_df = pd.DataFrame(
+        favourite_books_data, columns=["user_id", "book_id", "added_at"]
+    )
+
+    # Update recommender with database data
+    recommender.books_data = content_df
+    recommender.user_info_data = user_df
+    recommender.favourite_books_data = favorite_books_df
+
 except Exception as e:
-    raise Exception(f"An error occurred while loading the favorite books file: {e}")
+    print(f"Error loading data from database: {e}")
+    raise Exception("Failed to load required data from database")
 
 
 # --- Pydantic Models ---
@@ -81,8 +117,10 @@ class User_RecommendRequest(BaseModel):
 
 
 class Recommendation(BaseModel):
-    book_id: str
-    label: str
+    id: str
+    title: str
+    authors: str
+    category: str
     best_value: float
 
 
@@ -101,7 +139,7 @@ def get_popular_books(n: int = 10):
     try:
         demographic_dataset = {
             "id": content_df["id"].astype(str),
-            "avg_rating": content_df["avg_rating"].str.replace(",", ".").astype(float),
+            "avg_rating": content_df["avg_rating"].astype(float),
             "rating_count": content_df["rating_count"].astype(int),
         }
         quantile_rate = 0.9
@@ -136,13 +174,29 @@ def content_based_recommendations(req: RecommendRequest):
 
         recommendations = []
         for book_id in similar_books:
-            book_details = content_df[content_df["id"].astype(str) == book_id].iloc[0]
-            label = book_details["category"]
-            best_value = 0.9  # Placeholder, you might want to refine this
+            # Check if book exists in dataframe
+            book_matches = content_df[content_df["id"].astype(str) == str(book_id)]
+            if book_matches.empty:
+                print(f"Warning: Book ID {book_id} not found in database")
+                continue
+                
+            try:
+                book_details = book_matches.iloc[0]
+                recommendations.append(
+                    Recommendation(
+                        id=book_id,
+                        title=book_details["title"],
+                        authors=book_details["authors"],
+                        category=book_details["category"],
+                        best_value=0.9
+                    )
+                )
+            except IndexError as e:
+                print(f"Error accessing book details for ID {book_id}: {str(e)}")
+                continue
 
-            recommendations.append(
-                Recommendation(book_id=book_id, label=label, best_value=best_value)
-            )
+        if not recommendations:
+            raise ValueError("No valid recommendations found for the given book ID")
 
         return ResponseFormat(
             status="success",

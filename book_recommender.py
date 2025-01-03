@@ -4,7 +4,6 @@ from sklearn.metrics.pairwise import cosine_distances
 from sentence_transformers import SentenceTransformer
 import pickle
 
-
 class BookRecommender:
     def __init__(self, sentence_transformer_path=None):
         if sentence_transformer_path:

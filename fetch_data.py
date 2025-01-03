@@ -70,6 +70,24 @@ def get_books_data():
         if conn:
             release_connection(conn)
 
+def get_books_summarize_data():
+    conn = None
+    try:
+        conn = get_connection()
+        if conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT title, authors, description FROM books")
+                books = cur.fetchall()
+                return books
+        else:
+            print("Failed to get connection for fetching books data.")
+            return []
+    except (Exception, psycopg2.Error) as error:
+        print("Error fetching data from books table", error)
+        return []
+    finally:
+        if conn:
+            release_connection(conn)
 
 # Function to fetch data from the 'user_info' table
 def get_user_info_data():
@@ -108,6 +126,25 @@ def get_favourite_books_data():
     except (Exception, psycopg2.Error) as error:
         print("Error fetching data from favourite_books table", error)
         return []
+    finally:
+        if conn:
+            release_connection(conn)
+            
+def get_book_by_id(id: int):
+    conn = None
+    try:
+        conn = get_connection()
+        if conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM books WHERE id = %s", (id,))
+                book = cur.fetchone()
+                return book
+        else:
+            print("Failed to get connection for fetching book by id.")
+            return None
+    except (Exception, psycopg2.Error) as error:
+        print("Error fetching book by id", error)
+        return None
     finally:
         if conn:
             release_connection(conn)
