@@ -10,7 +10,7 @@ class RatingDataset:
         self.df = dataframe
 
         self.dataset={}
-        self.dataset['id'] = self.df['id'].astype(str)
+        self.dataset['id'] = list(self.df['id'].astype(int))
 
         self.dataset['avg_rating'] = self.df['avg_rating'].astype(float)
         self.dataset['rating_count'] = self.df['rating_count'].astype(int)
@@ -76,11 +76,14 @@ class ContentDataset:
     def get_inputs(self) -> list:
         return self.attribute_matrixes
     
-    def get_ids(self) -> list[str]:
+    def get_ids(self) -> list[int]:
         return self.ids
     
     def get_labels(self) -> dict:
         return Utils.create_label_dict(self.dataset, self.encoding_model)
+
+    def check_id(self, id: int) -> bool:
+        return id in self.ids
 
 class UserDataset:
     def __init__(self, dataframe: pd.DataFrame, encoding_model_path: str, scaler: str='min-max'):
@@ -142,6 +145,9 @@ class UserDataset:
     
     def get_labels(self) -> dict:
         return Utils.create_label_dict(self.dataset, self.encoding_model)
+    
+    def check_id(self, id: int) -> bool:
+        return id in self.ids
 
 class FavouriteDataset:
     def __init__(self, dataframe: pd.DataFrame=None):
@@ -322,10 +328,15 @@ class GradientDescentExpModel:
         Apply model to predict top N related with target (having best value)
         """
         try:
-            print(f"*Top {self.N} related of ID: {self.ids[target]}, label: {self.labels[self.ids[target]]['label']}")
-            predicts, best_values = Utils.choose_top_N(self.inputs[target], self.W, self.N)
+            if (target not in self.ids):
+                print("Dataset has no target ID")
+                return [], None
+            
+            target_pos = self.ids.index(target)
+            print(f"*Top {self.N} related of ID: {target}, label: {self.labels[target_pos]['label']}")
+            predicts, best_values = Utils.choose_top_N(self.inputs[target_pos], self.W, self.N)
+            
             predict_ids = [self.ids[predict] for predict in predicts]
-
             decoded_labels = [self.labels[self.ids[predict]]['label'] for predict in predicts]
 
             for index in range(self.N):
