@@ -9,11 +9,15 @@ This repository contains models to recommend books for users, including:
 
 ---
 
+
 ## Getting Started
 
-This project requires Python 3.8 or higher.
+1.  **Install FastAPI:**
+    ```bash
 
-  **Install FastAPI:**
+## To Run the Project
+
+1.  **Run the preprocessing script:**
     ```bash
     pip install "fastapi[standard]"
     ```
