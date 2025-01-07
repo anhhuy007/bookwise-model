@@ -11,13 +11,7 @@ This repository contains models to recommend books for users, including:
 
 
 ## Getting Started
-
 1.  **Install FastAPI:**
-    ```bash
-
-## To Run the Project
-
-1.  **Run the preprocessing script:**
     ```bash
     pip install "fastapi[standard]"
     ```
